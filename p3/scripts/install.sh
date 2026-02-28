@@ -35,10 +35,11 @@ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 # K3d
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
-# Cluster
-k3d cluster create mycluster
+# Cluster (ports: 80/443 = Ingress, 30080 = app NodePort, 30443 = Argo CD)
+k3d cluster create mycluster -p "80:80@loadbalancer" -p "443:443@loadbalancer" -p "30080:30080@loadbalancer" -p "30443:30443@loadbalancer"
 kubectl get nodes
 kubectl create namespace argocd
+kubectl create namespace dev
 kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl get pods -n argocd
 
@@ -46,7 +47,8 @@ curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/lat
 sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
 rm argocd-linux-amd64
 
-argocd admin initial-password -n argocd
+# Expose Argo CD on host (no port-forward needed)
+kubectl patch svc argocd-server -n argocd --type=json -p='[{"op": "replace", "path": "/spec/type", "value": "NodePort"}, {"op": "add", "path": "/spec/ports/0/nodePort", "value": 30443}]'
 
-# Port forward
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+echo "Argo CD UI: https://localhost:30443 (or https://<host-ip>:30443)"
+echo "Initial password: $(argocd admin initial-password -n argocd)"
